@@ -11,7 +11,7 @@ Some key arguments:
 
 `reg`: the regulation intensity
 
-'Epochs': the num of iterative traing cycles
+`Epochs`: the num of iterative traing cycles
 
 `num_classes_sa`: the num of unknown parameters in the state action matrix 
 
