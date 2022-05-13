@@ -375,7 +375,7 @@ item_action_total_user_counts = item_action_total_user_counts()
 def item_want_user_counts():
     name = 'item_want_user_counts'
     mask = pd.Series(list(map(lambda x: True if x>0 else False, user_action_sequence_product_num['action_want_num'])))
-    grouped = user_action_sequence_product_num[['sku_id', 'user_id']].groupby('sku_id')['user_id'].nunique().reset_index()
+    grouped = user_action_sequence_product_num[mask][['sku_id', 'user_id']].groupby('sku_id')['user_id'].nunique().reset_index()
     grouped.columns = ['sku_id', name]
     item_want_user_counts = min_max_normalize(grouped, name)    
     return item_want_user_counts
@@ -385,7 +385,7 @@ item_want_user_counts = item_want_user_counts()
 def item_consume_user_counts():
     name = 'item_consume_user_counts'
     mask = pd.Series(list(map(lambda x: True if x>0 else False, user_action_sequence_product_num['action_order_num'])))
-    grouped = user_action_sequence_product_num[['sku_id', 'user_id']].groupby('sku_id')['user_id'].nunique().reset_index()
+    grouped = user_action_sequence_product_num[mask][['sku_id', 'user_id']].groupby('sku_id')['user_id'].nunique().reset_index()
     grouped.columns = ['sku_id', name]
     item_consume_user_counts = min_max_normalize(grouped, name)    
     return item_consume_user_counts
