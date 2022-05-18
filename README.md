@@ -20,3 +20,8 @@ Some key arguments:
 `num_classes_s`: the num of unknown parameters in the state matrix 
 
 `Pi_0`: the parameter of initial state probability
+
+
+
+## Model
+The trained model is saved in the file "Model".
