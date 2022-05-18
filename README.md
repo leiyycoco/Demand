@@ -11,6 +11,8 @@ Some key arguments:
 
 `reg`: the regulation intensity
 
+`momentum_value`: the momentum value in the optimization method
+
 `Epochs`: the num of iterative traing cycles
 
 `num_classes_sa`: the num of unknown parameters in the state action matrix 
