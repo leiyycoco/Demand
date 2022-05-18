@@ -24,4 +24,4 @@ Some key arguments:
 
 
 ## Model
-The trained model is saved in the file "Model".
+The trained model is saved in the file "SaveModel".
