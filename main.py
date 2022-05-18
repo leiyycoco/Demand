@@ -2,12 +2,12 @@
 
 import pandas as pd
 import numpy as np
-from hmmlearn import hmm
 import matplotlib.pyplot as plt
-import copy
+import time
 
 import torch
-from torch import nn
+import torch.nn as nn
+import copy
 
 #%% 
 filename = "G:/"
@@ -132,6 +132,8 @@ hidden_dim = 50
 reg = 0.001              
 #  learning rate of gradient descent, adjustable parameter
 learning_rate = 0.001    
+# momentum
+momentum_value = 0.9 
 # num of cycles
 Epochs = 1000
 
@@ -141,17 +143,17 @@ Pi_0 = torch.Tensor(Pi_0).int()
 class NN_HMM(nn.Module):
     def __init__(self):
         super(NN_HMM, self).__init__()
-        self.state_action_M = nn.nn.Sequential(
+        self.state_action_M = nn.Sequential(
             nn.Linear(input_dim_sa, hidden_dim), 
-            nn.Sigmoid(True),
+            nn.Sigmoid(),
             nn.Linear(hidden_dim, num_classes_sa),
-            nn.Softmax(True)
+            nn.Softmax()
             )
-        self.state_M = nn.nn.Sequential(
+        self.state_M = nn.Sequential(
             nn.Linear(input_dim_s, hidden_dim), 
-            nn.Sigmoid(True),
+            nn.Sigmoid(),
             nn.Linear(hidden_dim, num_classes_s),
-            nn.Softmax(True)
+            nn.Softmax()
             )
     def forward(self, X):
         X_sa = X.split(input_dim_sa,dim=1)[0]
@@ -164,52 +166,96 @@ class NN_HMM(nn.Module):
 
 model = NN_HMM()
 
-
+class ForwardModel(nn.Module):
+    def __init__(self,Pi_0,transition_probability,emission_probability):
+        self.Pi_0 = Pi_0
+        self.transition_probability = transition_probability
+        self.emission_probability = emission_probability
+        self.n_states = len(emission_probability)
+    def log_prob(self,se):
+        alpha = torch.zeros(self.n_states, ) 
+        # initial value
+        for i in range(self.n_states):
+            alpha[i] = self.Pi_0[i]*self.emission_probability[i][se[0]]
+        # recursion
+        temp = torch.zeros(self.n_states, ) 
+        temp_2 = torch.zeros(self.n_states, ) 
+        temp_list = torch.zeros(self.n_states)
+        for t in range(1,se.shape[0]):
+            observation = se[t]            
+            for i in range(self.n_states):
+                
+                for j in range(self.n_states):
+                    x_1 = alpha[j].clone()
+                    y_1 = self.transition_probability[j][i].clone()
+                    temp_list[j] = x_1 * y_1
+                temp[i] = torch.sum(temp_list)
+                x = temp[i].clone()
+                y = self.emission_probability[i][observation].clone()
+                temp_2[i] = x * y
+            alpha = temp_2.clone()
+        # stop
+        return -torch.log(torch.sum(alpha))
+        #return torch.sum(alpha)
 
 class My_loss(nn.Module):
     def __init__(self):
         super().__init__()
     
     def forward(self, Y, Y_output):
-        n_states = 3
+        #Y = outputs
+        #Y_output = targets
         Y_state_action = Y.split(num_classes_sa,dim=1)[0]
         Y_state = Y.split(num_classes_sa,dim=1)[1]   
-        sum = 0
+        loss_list = torch.zeros(Y.shape[0])
         for i in range(0,Y.shape[0]):
-            Matrix_state_action=np.array([[0.,0.,0.,0.,0.,0.],[0.,0.,0.,0.,0.,0.],[0.,0.,0.,0.,0.,0.]])
-            Matrix_state_action=torch.Tensor(Matrix_state_action)
-            Matrix_state_action[0,3]=1-Y_state_action[i,0]-Y_state_action[i,1]-Y_state_action[i,2]
-            Matrix_state_action[0,0:3]=Y_state_action[i,0:3]
-            Matrix_state_action[1,4]=Y_state_action[i,3]
-            Matrix_state_action[1,5]=1-Y_state_action[1,3]
-            Matrix_state_action[2,0:3]=Y_state_action[i,4:7]
-            Matrix_state_action[2,3]=1-Y_state_action[i,4]-Y_state_action[i,5]-Y_state_action[i,6]
+            print('i: ', i)
+            Matrix_state_action = np.array([[0.,0.,0.,0.,0.,0.],[0.,0.,0.,0.,0.,0.],[0.,0.,0.,0.,0.,0.]])
+            Matrix_state_action = torch.Tensor(Matrix_state_action)
+            Matrix_state_action[0,3] = 1-Y_state_action[i,0]-Y_state_action[i,1]-Y_state_action[i,2]
+            Matrix_state_action[0,0:3] = Y_state_action[i,0:3]
+            Matrix_state_action[1,4] = Y_state_action[i,3]
+            Matrix_state_action[1,5] = 1- Y_state_action[1,3]
+            Matrix_state_action[2,0:3] = Y_state_action[i,4:7]
+            Matrix_state_action[2,3] = 1 - Y_state_action[i,4] - Y_state_action[i,5] - Y_state_action[i,6]
+                        
+            Matrix_state = np.array([[0.,0.,0.],[0.,0.,0.],[0.,0.,0.]])
+            Matrix_state = torch.Tensor(Matrix_state)
+            Matrix_state[:,0:2] = Y_state[i,:].reshape(3,2)
+            Matrix_state[0,2] = 1 - Y_state[i,0] - Y_state[i,1] 
+            Matrix_state[1,2] = 1 - Y_state[i,2] - Y_state[i,3] 
+            Matrix_state[2,2] = 1 - Y_state[i,4] - Y_state[i,5] 
+            
+            emission_probability = Matrix_state_action.clone()
+            transition_probability = Matrix_state.clone()
+            model_hmm = ForwardModel(Pi_0,transition_probability,emission_probability)
         
-            Matrix_state=np.array([[0.,0.,0.],[0.,0.,0.],[0.,0.,0.]])
-            Matrix_state=torch.Tensor(Matrix_state)
-            Matrix_state[:,0:2]=Y_state[i,:].reshape(3,2)
-            Matrix_state[:,2]=1-Matrix_state[:,0]-Matrix_state_action[:,1]  
-            emission_probability = Matrix_state_action
-            transition_probability = Matrix_state
-            model_hmm = hmm.MultinomialHMM(n_components=n_states, n_iter=20, tol=0.001)
-            model_hmm.startprob_ = torch.Tensor(Pi_0)
-            model_hmm.transmat_=transition_probability
-            model_hmm.emissionprob_=emission_probability
-        
-        se = Y_output[[i]]
-        se = se[0,0:torch.where(torch.isnan(se))[1].min()].int().unsqueeze(0)
-        sum = sum - model_hmm.score(se) 
-        #model.score is log of probability
-        loss_hmm = sum/Y_output.shape[0]
+            se_temp = Y_output[i]
+            se = se_temp[0:torch.where(torch.isnan(se_temp))[0].min().item()].int()
+            # se = torch.tensor([0,5])
+            a = model_hmm.log_prob(se)
+            # a.backward(retain_graph=True)
+            loss_list[i] = a 
+        sum_loss = torch.sum(loss_list)
+        loss_hmm = sum_loss/Y_output.shape[0]
+        # loss_hmm.backward(retain_graph=True)
         return loss_hmm        
     
 criterion = My_loss()
 
 #  iterative optimization algorithm, stochastic gradient descent algorithm
-optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate,weight_decay=reg)  
+optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate,weight_decay=reg, momentum=momentum_value)  
 
 loss_dict = []
 # Iterative training
+torch.autograd.set_detect_anomaly(True)
+start_read_train = time.perf_counter()
+#def closure():
+#    optimizer.zero_grad()
+#    outputs = model(inputs)
+#    loss = criterion(outputs, targets)
+#    loss.backward(retain_graph=True)
+#    return loss
 for epoch in range(Epochs):
     inputs = X
     targets = Y_output
@@ -220,18 +266,33 @@ for epoch in range(Epochs):
     loss = criterion(outputs, targets)
     # Back propagation updates parameters
     optimizer.zero_grad()  # gradient is zeroed out for each iteration
-    loss.backward()
+    loss.backward(retain_graph=True)
     optimizer.step()  # update weights
 
-
+    #optimizer.step(closure)
+    
     loss_dict.append(loss.item())
-    if epoch % 5 == 0:   # print every five times
-        print ('Epoch [{}/{}], Loss: {:.4f}'.format(epoch, Epochs, loss.item()))
-
+    #loss_dict.append(closure().item())
+    #if epoch % 5 == 0:   
+    print ('Epoch [{}/{}], Loss: {:.4f}'.format(epoch, Epochs, loss.item()))
+    #print ('Epoch [{}/{}], Loss: {:.4f}'.format(epoch, Epochs, closure().item()))
+elapsed_read_train = (time.perf_counter() - start_read_train) 
+print("The data for training： ",elapsed_read_train)  
 # plot loss
 plt.plot(loss_dict, label='loss for every epoch')
+plt.text(1, loss_dict[0]-0.0001, '%.4f'%loss_dict[0], ha='center', va='bottom', fontsize=10.5)
+plt.text(Epochs, loss_dict[Epochs-1]+0.0001, '%.4f'%loss_dict[Epochs-1], ha='center', va='bottom', fontsize=10.5)
 plt.legend()
 plt.show()
+
+#save
+PATH_1 = filename + "SaveModel/Model.tar"
+torch.save(model, PATH_1)
+PATH_2 = filename + "SaveModel/model_param.pkl"
+torch.save(model.state_dict(), PATH_2)
+#load
+model = torch.load(PATH_1)
+model.state_dict()
 
 
 
@@ -251,9 +312,9 @@ def calculate_buy(matrix_s,matrix_sa):
     for t in range(T):
         matrix_s_t = torch.dot(Pi_0,matrix_s)
         for tn in range(1,t+1):
-            matrix_s_t = torch.dot(matrix_s_t,matrix_s)
-        action_prob = torch.dot(matrix_s_t,matrix_sa)
-        order_prob = action_prob[0,3].item()
+            matrix_s_t = torch.matmul(matrix_s_t,matrix_s)
+        action_prob = torch.matmul(matrix_s_t,matrix_sa)
+        order_prob = action_prob[3].item()
         if order_prob >= 0.7:
             if_buy = 1
             return if_buy
@@ -279,7 +340,7 @@ for i in range(0,outputs_test.shape[0]):
     Matrix_s_test=torch.Tensor(Matrix_s_test)
     Matrix_s_test[:,0:2]=Y_s_test[i,:].reshape(3,2)
     Matrix_s_test[:,2]=1-Matrix_s_test[:,0]-Matrix_s_test[:,1]  
-    if_buy_test = calculate_buy(Matrix_sa_test,Matrix_s_test)
+    if_buy_test = calculate_buy(Matrix_s_test,Matrix_sa_test)
     if 3 in Y_output_test[[i]]:
         if_buy_real = 1
     else:
@@ -287,5 +348,5 @@ for i in range(0,outputs_test.shape[0]):
     if if_buy_test == if_buy_real:
         sum += 1
 if_buy_predict_prob = sum/outputs_test.shape[0]
-print('The probability of predicting if buy is {}:'.format(if_buy_predict_prob))  
+print('The probability of true prediction for buying or not buying is: {}'.format(if_buy_predict_prob))  
 
