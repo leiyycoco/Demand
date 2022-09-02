@@ -1,4 +1,7 @@
 # Demand Forecasting
+
+Author: Yuanyuan Lei, Peng Tian, Fengming Cui
+
 This is a implenmentaion for combining Neural Network and Hidden Markov Model to conduct demand forecasting.
 
 
